@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>S3M NAC | Monitoring Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+  darkMode: "class",
+  theme: {
+    extend: {
+      colors: {
+        "on-error": "#490006",
+        "primary-container": "#21bedc",
+        "background": "#060e20",
+        "error-container": "#9f0519",
+        "error": "#ff716c",
+        "on-surface-variant": "#a3aac4",
+        "on-background": "#dee5ff",
+        "on-primary": "#004b58",
+        "primary-dim": "#40ceed",
+        "surface-variant": "#192540",
+        "surface-container-low": "#091328",
+        "on-error-container": "#ffa8a3",
+        "error-dim": "#d7383b",
+        "surface-container-highest": "#192540",
+        "secondary": "#69f6b8",
+        "surface-container": "#0f1930",
+        "surface": "#060e20",
+        "surface-bright": "#1f2b49",
+        "on-primary-container": "#00343e",
+        "primary": "#53ddfc",
+        "surface-tint": "#53ddfc",
+        "surface-container-high": "#141f38",
+        "tertiary": "#699cff",
+        "secondary-dim": "#58e7ab",
+        "on-surface": "#dee5ff",
+        "outline-variant": "#40485d",
+        "on-tertiary": "#001e4a",
+        "surface-dim": "#060e20",
+        "outline": "#6d758c",
+        "surface-container-lowest": "#000000"
+      },
+      fontFamily: {
+        "headline": ["Inter"],
+        "body": ["Inter"],
+        "label": ["Inter"]
+      },
+      borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+    },
+  },
+}
+</script>
+<style>
+.material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    vertical-align: middle;
+}
+body { font-family: 'Inter', sans-serif; }
+.glass-panel {
+    background: rgba(20, 31, 56, 0.4);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(-12px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+.fade-in { animation: fadeIn 0.5s ease-out forwards; }
+.slide-in { animation: slideIn 0.4s ease-out forwards; }
+.update-flash {
+    animation: fadeIn 0.3s ease-out;
+}
+</style>
+</head>
+<body class="bg-background text-on-surface selection:bg-primary-container/30 min-h-screen flex flex-col">
+
+<!-- Header -->
+<header class="bg-[#091328] backdrop-blur-xl opacity-95 fixed top-0 w-full z-50 flex justify-between items-center px-8 h-16 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]">
+<div class="flex items-center gap-8">
+<span class="text-xl font-black tracking-widest text-cyan-400 drop-shadow-[0_0_8px_rgba(83,221,252,0.4)]">S3M NAC</span>
+<nav class="hidden md:flex items-center gap-6">
+<a class="text-cyan-400 border-b-2 border-cyan-400 pb-2 transition-all font-['Inter'] tracking-tight font-medium text-sm" href="#">Dashboard</a>
+<a class="text-slate-400 hover:text-slate-200 pb-2 font-['Inter'] tracking-tight font-medium text-sm transition-all duration-200 cursor-pointer" href="#">Sessions</a>
+<a class="text-slate-400 hover:text-slate-200 pb-2 font-['Inter'] tracking-tight font-medium text-sm transition-all duration-200 cursor-pointer" href="#">Endpoints</a>
+<a class="text-slate-400 hover:text-slate-200 pb-2 font-['Inter'] tracking-tight font-medium text-sm transition-all duration-200 cursor-pointer" href="#">VLANs</a>
+</nav>
+</div>
+<div class="flex items-center gap-6">
+<div id="system-status" class="flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20">
+<span class="w-2 h-2 rounded-full bg-secondary shadow-[0_0_8px_rgba(105,246,184,0.6)] animate-pulse"></span>
+<span class="text-[10px] uppercase tracking-wider font-bold text-secondary">System Healthy</span>
+</div>
+<div class="flex items-center gap-4 text-on-surface-variant">
+<span id="clock" class="text-xs font-mono tracking-wider">--:--:--</span>
+<span class="material-symbols-outlined hover:bg-white/5 transition-all duration-200 cursor-pointer p-1 rounded">notifications_active</span>
+</div>
+<div class="h-8 w-8 rounded-full overflow-hidden border border-outline-variant bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant">account_circle</span>
+</div>
+</div>
+</header>
+
+<main class="flex-grow pt-24 px-8 pb-12 max-w-[1920px] mx-auto w-full space-y-8">
+
+<!-- Metric Cards -->
+<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<!-- Total Users -->
+<div class="glass-panel p-6 rounded-xl border border-white/5 flex flex-col justify-between relative overflow-hidden group fade-in">
+<div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity">
+<span class="material-symbols-outlined text-8xl">groups</span>
+</div>
+<div>
+<span class="text-on-surface-variant text-xs uppercase tracking-widest font-bold">Total Users</span>
+<h2 id="metric-users" class="text-4xl font-extrabold tracking-tighter mt-2 text-on-surface">—</h2>
+</div>
+<div class="mt-4 flex items-center gap-2 text-secondary text-xs font-medium">
+<span class="material-symbols-outlined text-sm">database</span>
+<span>PostgreSQL + Redis</span>
+</div>
+</div>
+<!-- Active Sessions -->
+<div class="glass-panel p-6 rounded-xl border border-white/5 flex flex-col justify-between relative overflow-hidden group fade-in" style="animation-delay: 0.1s">
+<div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity">
+<span class="material-symbols-outlined text-8xl">link</span>
+</div>
+<div>
+<span class="text-on-surface-variant text-xs uppercase tracking-widest font-bold">Active Sessions</span>
+<h2 id="metric-sessions" class="text-4xl font-extrabold tracking-tighter mt-2 text-primary">—</h2>
+</div>
+<div class="mt-4 flex items-center gap-2 text-primary text-xs font-medium">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">bolt</span>
+<span>Real-time monitoring</span>
+</div>
+</div>
+<!-- Auth Success Rate -->
+<div class="glass-panel p-6 rounded-xl border border-white/5 flex flex-col justify-between relative overflow-hidden group fade-in" style="animation-delay: 0.2s">
+<div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity">
+<span class="material-symbols-outlined text-8xl">verified_user</span>
+</div>
+<div>
+<span class="text-on-surface-variant text-xs uppercase tracking-widest font-bold">Auth Success Rate</span>
+<h2 id="metric-auth-rate" class="text-4xl font-extrabold tracking-tighter mt-2 text-secondary">—</h2>
+</div>
+<div class="mt-4 flex items-center gap-2 text-secondary text-xs font-medium">
+<span class="material-symbols-outlined text-sm">check_circle</span>
+<span id="auth-threshold">Calculating...</span>
+</div>
+</div>
+<!-- Blocked Accounts -->
+<div class="glass-panel p-6 rounded-xl border border-white/5 flex flex-col justify-between relative overflow-hidden group fade-in" style="animation-delay: 0.3s">
+<div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity">
+<span class="material-symbols-outlined text-8xl">block</span>
+</div>
+<div>
+<span class="text-on-surface-variant text-xs uppercase tracking-widest font-bold">Blocked Accounts</span>
+<h2 id="metric-blocked" class="text-4xl font-extrabold tracking-tighter mt-2 text-error">—</h2>
+</div>
+<div class="mt-4 flex items-center gap-2 text-on-surface-variant text-xs font-medium">
+<span class="material-symbols-outlined text-sm">shield</span>
+<span id="blocked-status">Checking...</span>
+</div>
+</div>
+</section>
+
+<!-- Main Content Area -->
+<div class="grid grid-cols-12 gap-8">
+<!-- Active Sessions Table -->
+<div class="col-span-12 lg:col-span-9 space-y-6">
+<div class="flex items-center justify-between">
+<h3 class="text-lg font-bold tracking-tight flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">data_usage</span>
+Live Session Feed
+<span id="update-indicator" class="text-[10px] text-primary/50 font-normal ml-2 hidden">↻ Updated</span>
+</h3>
+<div class="flex gap-2">
+<button onclick="exportCSV()" class="px-4 py-2 bg-surface-container-high hover:bg-surface-bright rounded text-xs font-bold uppercase tracking-wider transition-colors border border-white/5">Export CSV</button>
+</div>
+</div>
+<div class="glass-panel rounded-xl overflow-hidden border border-white/5">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-highest/50">
+<tr>
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Username</th>
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Session ID</th>
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">NAS IP</th>
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Start Time</th>
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant text-right">Traffic (↓/↑)</th>
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant text-center">Status</th>
+</tr>
+</thead>
+<tbody id="sessions-tbody" class="divide-y divide-white/5">
+<tr><td colspan="6" class="px-6 py-12 text-center text-on-surface-variant">
+<span class="material-symbols-outlined text-4xl opacity-20 block mb-2">radar</span>
+<span class="text-sm">Loading sessions...</span>
+</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<!-- Side Panels -->
+<div class="col-span-12 lg:col-span-3 space-y-8">
+<!-- VLAN Distribution -->
+<div class="glass-panel p-6 rounded-xl border border-white/5 space-y-6">
+<div class="flex justify-between items-center">
+<h4 class="text-sm font-bold tracking-tight uppercase text-on-surface-variant">VLAN Distribution</h4>
+<span class="material-symbols-outlined text-primary text-lg">pie_chart</span>
+</div>
+<div class="flex justify-center py-4">
+<div class="relative w-40 h-40">
+<svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+<circle class="text-white/5" cx="50" cy="50" fill="transparent" r="45" stroke="currentColor" stroke-width="8"></circle>
+<circle id="vlan-arc-employee" class="text-primary transition-all duration-1000" cx="50" cy="50" fill="transparent" r="45" stroke="currentColor" stroke-dasharray="283" stroke-dashoffset="283" stroke-width="8"></circle>
+<circle id="vlan-arc-guest" class="text-secondary transition-all duration-1000" cx="50" cy="50" fill="transparent" r="45" stroke="currentColor" stroke-dasharray="283" stroke-dashoffset="283" stroke-width="8"></circle>
+<circle id="vlan-arc-admin" class="text-error transition-all duration-1000" cx="50" cy="50" fill="transparent" r="45" stroke="currentColor" stroke-dasharray="283" stroke-dashoffset="283" stroke-width="8"></circle>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center">
+<span id="vlan-total" class="text-2xl font-black">—</span>
+<span class="text-[8px] uppercase font-bold tracking-widest text-on-surface-variant">Users</span>
+</div>
+</div>
+</div>
+<div id="vlan-legend" class="space-y-3">
+<div class="flex items-center justify-between text-xs">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-error"></div>
+<span class="font-medium">VLAN 10 (Admin)</span>
+</div>
+<span class="font-mono text-on-surface-variant" id="vlan-admin-pct">—</span>
+</div>
+<div class="flex items-center justify-between text-xs">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-primary"></div>
+<span class="font-medium">VLAN 20 (Employee)</span>
+</div>
+<span class="font-mono text-on-surface-variant" id="vlan-employee-pct">—</span>
+</div>
+<div class="flex items-center justify-between text-xs">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-secondary"></div>
+<span class="font-medium">VLAN 30 (Guest)</span>
+</div>
+<span class="font-mono text-on-surface-variant" id="vlan-guest-pct">—</span>
+</div>
+</div>
+</div>
+
+<!-- Users Panel -->
+<div class="glass-panel p-6 rounded-xl border border-white/5 space-y-4">
+<h4 class="text-sm font-bold tracking-tight uppercase text-on-surface-variant">Registered Users</h4>
+<div id="users-panel" class="space-y-4">
+<div class="text-center text-on-surface-variant text-xs py-4">Loading...</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+
+<!-- Footer -->
+<footer class="bg-[#060e20] border-t border-white/5 w-full py-4 mt-auto flex flex-row justify-between items-center px-12">
+<div class="flex items-center gap-4">
+<span class="font-['Inter'] text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500">S3M Security • NAC System v1.0</span>
+<span class="text-[10px] text-primary/40">• Data refreshes every 5 seconds</span>
+</div>
+<div class="flex items-center gap-8">
+<a class="font-['Inter'] text-[10px] uppercase tracking-[0.2em] font-bold text-slate-600 hover:text-cyan-300 transition-colors" href="/health" target="_blank">API Status</a>
+<a class="font-['Inter'] text-[10px] uppercase tracking-[0.2em] font-bold text-slate-600 hover:text-cyan-300 transition-colors" href="/docs" target="_blank">API Docs</a>
+</div>
+</footer>
+
+<script>
+// ============================================
+// S3M NAC Dashboard — Live Data Engine
+// ============================================
+
+const API_BASE = window.location.origin;
+let lastSessionCount = -1;
+
+// --- Utility Functions ---
+
+function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + sizes[i];
+}
+
+function formatDuration(seconds) {
+    if (!seconds || seconds === 0) return '0s';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return h + 'h ' + m + 'm';
+    if (m > 0) return m + 'm ' + s + 's';
+    return s + 's';
+}
+
+function formatTime(isoString) {
+    try {
+        const d = new Date(isoString);
+        return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch { return '—'; }
+}
+
+function formatDate(isoString) {
+    try {
+        const d = new Date(isoString);
+        return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' });
+    } catch { return ''; }
+}
+
+function getInitials(username) {
+    if (!username) return '??';
+    if (username.includes(':')) return 'MC'; // MAC address
+    return username.substring(0, 2).toUpperCase();
+}
+
+function getAvatarColor(groupname) {
+    const colors = {
+        'admin': 'bg-error/20 text-error',
+        'employee': 'bg-primary/20 text-primary',
+        'guest': 'bg-tertiary/20 text-tertiary'
+    };
+    return colors[groupname] || 'bg-outline-variant text-on-surface-variant';
+}
+
+function getBadgeStyle(groupname) {
+    const styles = {
+        'admin': 'bg-error/10 text-error',
+        'employee': 'bg-tertiary/10 text-tertiary',
+        'guest': 'bg-outline-variant text-on-surface-variant'
+    };
+    return styles[groupname] || 'bg-outline-variant text-on-surface-variant';
+}
+
+function showUpdateFlash() {
+    const el = document.getElementById('update-indicator');
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 2000);
+}
+
+// --- Clock ---
+function updateClock() {
+    const now = new Date();
+    document.getElementById('clock').textContent = now.toLocaleTimeString('tr-TR');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// --- API Fetch Functions ---
+
+async function fetchHealth() {
+    try {
+        const res = await fetch(API_BASE + '/health', { signal: AbortSignal.timeout(3000) });
+        const data = await res.json();
+        const el = document.getElementById('system-status');
+        if (data.status === 'ok') {
+            el.innerHTML = `
+                <span class="w-2 h-2 rounded-full bg-secondary shadow-[0_0_8px_rgba(105,246,184,0.6)] animate-pulse"></span>
+                <span class="text-[10px] uppercase tracking-wider font-bold text-secondary">System Healthy</span>
+            `;
+            el.className = 'flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20';
+        }
+    } catch {
+        const el = document.getElementById('system-status');
+        el.innerHTML = `
+            <span class="w-2 h-2 rounded-full bg-error shadow-[0_0_8px_rgba(255,113,108,0.6)] animate-pulse"></span>
+            <span class="text-[10px] uppercase tracking-wider font-bold text-error">API Offline</span>
+        `;
+        el.className = 'flex items-center gap-2 px-3 py-1 rounded-full bg-error/10 border border-error/20';
+    }
+}
+
+async function fetchStats() {
+    try {
+        const res = await fetch(API_BASE + '/stats');
+        const data = await res.json();
+        document.getElementById('metric-auth-rate').textContent = data.auth_success_rate + '%';
+        document.getElementById('metric-blocked').textContent = data.blocked_accounts;
+
+        // Auth threshold indicator
+        const thresholdEl = document.getElementById('auth-threshold');
+        if (data.auth_success_rate >= 90) {
+            thresholdEl.textContent = 'Threshold: Optimal';
+        } else if (data.auth_success_rate >= 70) {
+            thresholdEl.textContent = 'Threshold: Warning';
+        } else {
+            thresholdEl.textContent = 'Threshold: Critical';
+        }
+
+        // Blocked status
+        const blockedEl = document.getElementById('blocked-status');
+        blockedEl.textContent = data.blocked_accounts === 0
+            ? 'No active threats detected'
+            : data.blocked_accounts + ' account(s) rate-limited';
+    } catch { /* silent */ }
+}
+
+async function fetchSessions() {
+    try {
+        const res = await fetch(API_BASE + '/sessions/active');
+        const sessions = await res.json();
+
+        document.getElementById('metric-sessions').textContent = sessions.length;
+
+        const tbody = document.getElementById('sessions-tbody');
+
+        if (sessions.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-on-surface-variant">
+                <span class="material-symbols-outlined text-4xl opacity-20 block mb-2">radar</span>
+                <span class="text-sm">No active sessions</span>
+            </td></tr>`;
+        } else {
+            tbody.innerHTML = sessions.map((s, i) => `
+                <tr class="hover:bg-white/5 transition-colors slide-in" style="animation-delay: ${i * 0.05}s">
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
+                                ${getInitials(s.username)}
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold">${s.username}</p>
+                                <p class="text-[10px] text-on-surface-variant">Session: ${s.session_id}</p>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <p class="text-[10px] text-on-surface-variant font-mono">${s.session_id}</p>
+                    </td>
+                    <td class="px-6 py-4 font-mono text-xs text-on-surface-variant">${s.nas_ip}</td>
+                    <td class="px-6 py-4">
+                        <p class="text-xs">${formatTime(s.start_time)}</p>
+                        <p class="text-[10px] text-primary">Duration: ${formatDuration(s.session_time)}</p>
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <div class="flex flex-col items-end gap-1">
+                            <span class="text-xs font-mono text-secondary">${formatBytes(s.input_octets)} ↓</span>
+                            <span class="text-xs font-mono text-primary-dim">${formatBytes(s.output_octets)} ↑</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 text-center">
+                        <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-secondary/10 text-secondary border border-secondary/20">Online</span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        if (lastSessionCount !== sessions.length && lastSessionCount !== -1) {
+            showUpdateFlash();
+        }
+        lastSessionCount = sessions.length;
+    } catch { /* silent */ }
+}
+
+async function fetchUsers() {
+    try {
+        const res = await fetch(API_BASE + '/users');
+        const users = await res.json();
+
+        document.getElementById('metric-users').textContent = users.length;
+
+        // Users panel
+        const panel = document.getElementById('users-panel');
+        panel.innerHTML = users.map(u => `
+            <div class="flex items-center justify-between slide-in">
+                <div class="flex items-center gap-3">
+                    <div class="relative">
+                        <div class="w-8 h-8 rounded bg-surface-container-highest flex items-center justify-center">
+                            <span class="material-symbols-outlined text-sm">person</span>
+                        </div>
+                        <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 ${u.is_online ? 'bg-secondary' : 'bg-outline'} border-2 border-surface-container-high rounded-full"></div>
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold">${u.username}</p>
+                        <span class="text-[9px] px-1.5 py-0.5 rounded-sm ${getBadgeStyle(u.groupname)} font-black uppercase">${u.groupname.toUpperCase()}</span>
+                    </div>
+                </div>
+                <span class="text-[10px] ${u.is_online ? 'text-secondary' : 'text-outline'}">${u.is_online ? 'Online' : 'Offline'}</span>
+            </div>
+        `).join('');
+
+        // VLAN distribution
+        const groups = { admin: 0, employee: 0, guest: 0 };
+        users.forEach(u => {
+            if (groups.hasOwnProperty(u.groupname)) groups[u.groupname]++;
+        });
+        const total = users.length || 1;
+
+        document.getElementById('vlan-total').textContent = users.length;
+        document.getElementById('vlan-admin-pct').textContent = Math.round((groups.admin / total) * 100) + '%';
+        document.getElementById('vlan-employee-pct').textContent = Math.round((groups.employee / total) * 100) + '%';
+        document.getElementById('vlan-guest-pct').textContent = Math.round((groups.guest / total) * 100) + '%';
+
+        // SVG donut chart - update arcs
+        const circumference = 283;
+        const adminPct = groups.admin / total;
+        const employeePct = groups.employee / total;
+        const guestPct = groups.guest / total;
+
+        document.getElementById('vlan-arc-employee').setAttribute('stroke-dashoffset',
+            circumference - (employeePct * circumference));
+        document.getElementById('vlan-arc-guest').setAttribute('stroke-dashoffset',
+            circumference - (guestPct * circumference));
+        document.getElementById('vlan-arc-admin').setAttribute('stroke-dashoffset',
+            circumference - (adminPct * circumference));
+    } catch { /* silent */ }
+}
+
+// CSV Export
+function exportCSV() {
+    fetch(API_BASE + '/sessions/active')
+        .then(r => r.json())
+        .then(sessions => {
+            if (sessions.length === 0) return alert('No active sessions to export.');
+            let csv = 'Username,Session ID,NAS IP,Start Time,Duration(s),Input Octets,Output Octets\n';
+            sessions.forEach(s => {
+                csv += `${s.username},${s.session_id},${s.nas_ip},${s.start_time},${s.session_time},${s.input_octets},${s.output_octets}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'nac_sessions_' + new Date().toISOString().slice(0,10) + '.csv';
+            a.click();
+        });
+}
+
+// --- Main Loop ---
+async function fetchAll() {
+    await Promise.all([fetchHealth(), fetchStats(), fetchSessions(), fetchUsers()]);
+}
+
+// Initial load
+fetchAll();
+
+// Refresh every 5 seconds
+setInterval(fetchAll, 5000);
+</script>
+
+</body>
+</html>
