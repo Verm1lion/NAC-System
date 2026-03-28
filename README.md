@@ -18,6 +18,7 @@ RADIUS protokolü tabanlı, konteynerize edilmiş Network Access Control sistemi
                     │  Engine (:8000)  │◀────│ (Sessions,  │
                     │  /auth /authorize│     │  Rate-limit)│
                     │  /accounting     │     └─────────────┘
+                    │  /dashboard ◀──web      
                     └──────────────────┘
 ```
 
@@ -112,7 +113,19 @@ done
 curl http://localhost:8000/health          # ✅ {"status":"ok"}
 curl http://localhost:8000/users           # ✅ 4 kullanıcı listesi
 curl http://localhost:8000/sessions/active # ✅ Aktif oturum listesi
+curl http://localhost:8000/stats           # ✅ Auth rate, blocked hesaplar
 ```
+
+### 📊 Monitoring Dashboard
+
+Tarayıcıda açın: `http://<VM-IP>:8000/dashboard`
+
+- **Gerçek zamanlı** — 5 saniyede bir API'den veri çeker
+- **4 metrik kartı** — Total Users, Active Sessions, Auth Success Rate, Blocked Accounts
+- **Live Session tablosu** — aktif oturumlar, traffic, süre
+- **VLAN dağılım grafiği** — donut chart ile kullanıcı grup dağılımı
+- **Users paneli** — online/offline durumu
+- **CSV Export** — aktif oturumları dışa aktar
 
 ## 👥 Test Kullanıcıları
 
@@ -157,7 +170,9 @@ curl http://localhost:8000/sessions/active # ✅ Aktif oturum listesi
 
 ### `GET /users` — Kullanıcı Listesi
 ### `GET /sessions/active` — Aktif Oturumlar
+### `GET /stats` — İstatistikler (Auth Rate, Blocked Count)
 ### `GET /health` — Sistem Durumu
+### `GET /dashboard` — Monitoring Dashboard (Web UI)
 
 ## 📁 Proje Yapısı
 
@@ -173,16 +188,19 @@ nac-system/
 │   └── sites-available/default   # RADIUS istek işleme pipeline'ı
 ├── api/                          # FastAPI policy engine
 │   ├── Dockerfile                # Python 3.13-slim + uvicorn
-│   ├── main.py                   # Uygulama giriş noktası + lifespan
+│   ├── main.py                   # Uygulama giriş noktası + CORS + static
 │   ├── config.py                 # Environment yönetimi
 │   ├── database.py               # PostgreSQL pool + Redis bağlantıları
 │   ├── models.py                 # Pydantic request/response şemaları
+│   ├── static/
+│   │   └── dashboard.html        # SOC-style monitoring dashboard
 │   └── routes/
 │       ├── auth.py               # POST /auth — rate-limited authentication
 │       ├── authorize.py          # POST /authorize — grup + VLAN lookup
 │       ├── accounting.py         # POST /accounting — Start/Stop/Interim
 │       ├── users.py              # GET /users — kullanıcı listesi
-│       └── sessions.py           # GET /sessions/active — Redis'ten okuma
+│       ├── sessions.py           # GET /sessions/active — Redis'ten okuma
+│       └── stats.py              # GET /stats — auth rate, blocked count
 ├── postgres/
 │   └── init.sql                  # FreeRADIUS standart şeması + seed data
 └── docs/
