@@ -116,35 +116,134 @@ Her adımda hangi modüllerin çalışacağını biz tanımlıyoruz. Mesela `aut
 
 ---
 
-## 🐍 FastAPI Policy Engine
+## 🐛 AŞAMA 7-8: VM'de Deploy ve Debug Süreci
 
-### 5 Endpoint — Her birinin görevi ne?
+### Karşılaştığımız sorunlar ve nasıl çözdük
 
-| Endpoint | Ne yapıyor? | Kim çağırıyor? |
-|----------|-------------|---------------|
-| `POST /auth` | Şifre kontrolü + rate-limiting | FreeRADIUS (rlm_rest) |
-| `POST /authorize` | Kullanıcının grubunu ve VLAN'ını döner | FreeRADIUS (rlm_rest) |
-| `POST /accounting` | Oturum Start/Update/Stop kaydeder | FreeRADIUS (rlm_rest) |
-| `GET /users` | Tüm kullanıcıları listeler | Admin (curl/browser) |
-| `GET /sessions/active` | Aktif oturumları Redis'ten çeker | Admin (curl/browser) |
+Bu bölüm özellikle **video çekimi** ve **mülakat** için çok değerli. Hocalar gerçek dünya deneyimini görmek ister — "her şey ilk seferde çalıştı" demek yerine bu sorunları anlatmak daha etkileyici.
 
-### Neden hem SQL hem de REST ile accounting yapıyoruz?
-İkisinin rolü farklı:
-- **SQL** → Kalıcı kayıt (radacct tablosu) — "3 ay önce kim bağlanmıştı?" sorusuna cevap
-- **REST → Redis** → Anlık durum — "Şu an kim bağlı?" sorusuna cevap
+### Sorun 1: FreeRADIUS Access-Reject dönüyordu (doğru şifreye rağmen)
 
-PostgreSQL'den "aktif oturumları" sorgulamak mümkün ama yavaş (disk I/O). Redis bellekte çalışıyor — milisaniyede cevap veriyor.
+**Belirti:** `radtest testuser User123! localhost 0 testing123` komutu Access-Reject veriyordu, şifre doğru olmasına rağmen.
 
-### Rate-limiting nasıl çalışıyor?
-Redis'te kullanıcı bazlı sayaç tutuyoruz:
+**Teşhis süreci:**
+1. `freeradius -X` ile debug modunda çalıştırdık
+2. SQL sorgusunda `WHERE username = ''` gördük — username boş gidiyordu!
+3. FreeRADIUS'un SQL modülünde `sql_user_name` değişkeni tanımlı değildi
+
+**Çözüm:** `mods-available/sql` dosyasına eklendi:
 ```
-failed:testuser → 3  (TTL: 300 saniye)
+sql_user_name = "%{%{Stripped-User-Name}:-%{User-Name}}"
 ```
-Her yanlış şifrede sayaç 1 artıyor. 5'e ulaşınca "hesap kilitlendi" dönüyoruz. 300 saniye sonra TTL dolunca Redis key'i otomatik siliyor → hesap tekrar açılıyor.
+Bu satır FreeRADIUS'a "RADIUS paketindeki User-Name attribute'ünü al ve SQL sorgusunda `%{SQL-User-Name}` yerine koy" diyor.
 
-**Neden Redis?** Çünkü bu bilgiyi PostgreSQL'de tutmak gereksiz yavaş olurdu. Her auth isteğinde disk'e yazmak yerine belleğe yazıyoruz. Ayrıca TTL (Time To Live) özelliği Redis'te native — cron job yazmana gerek yok.
+**Ders:** Resmi FreeRADIUS SQL konfigürasyonunda bu satır varsayılan olarak var ama biz özel config yazarken atlayınca şema çalışmadı. Config yazarken belgelerin "default" dosyasını referans almak gerekiyor.
 
 ---
 
-## 📝 Bu dosya video hazırlığında güncellenir
-Her yeni aşamada buraya "ne yaptık, neden yaptık" eklenecek.
+### Sorun 2: REST modülü TLS hatası veriyordu
+
+**Belirti:** FreeRADIUS başlarken `rlm_rest: ${..tls} is not a valid reference` hatası
+
+**Neden:** REST modülü config'inde TLS ayarları `${..tls}` referansıyla yazılmıştı, ama Docker container içi iletişimde TLS kullanmıyoruz.
+
+**Çözüm:** REST config'inden TLS bloklarını kaldırdık. Container'lar aynı Docker network'te — HTTP yeterli.
+
+**Ders:** Internal servisler arasında TLS genellikle gereksiz karmaşıklık ekler. Zero-trust architecture istiyorsan eklersin ama staj projesinde overhead.
+
+---
+
+### Sorun 3: REST modülü Auth-Type'ı eziyordu
+
+**Belirti:** FreeRADIUS `authorize` bölümünde hem `sql` hem `rest` çalışıyordu. REST modülü `Auth-Type = REST` setliyordu, bu da PAP authentication'ı devre dışı bırakıyordu.
+
+**Çözüm:** `sites-available/default` dosyasının `authorize` bölümünden `rest` modülünü çıkardık. REST'i sadece `accounting` bölümünde bıraktık.
+
+**Mimari karar:** FreeRADIUS `authorize` aşamasında birden fazla modül çalışırsa sonuncu `Auth-Type`'ı kazanır. SQL `Auth-Type = PAP` setliyordu, REST `Auth-Type = REST` setliyordu, REST son çalıştığı için PAP hiç devreye girmiyordu.
+
+---
+
+### Sorun 4: FastAPI `db_pool` NoneType hatası
+
+**Belirti:** `curl http://localhost:8000/users` → 500 Internal Server Error  
+Log: `AttributeError: 'NoneType' object has no attribute 'getconn'`
+
+**Neden:** Python import sistemi ile ilgili ince bir bug:
+```python
+# ❌ YANLIŞ — import zamanında db_pool = None, sonra değişse bile bu referans None kalır
+from database import db_pool
+
+# ✅ DOĞRU — her erişimde modülden güncel değeri çeker
+import database
+conn = database.db_pool.getconn()
+```
+
+`database.py`'de `db_pool = None` olarak başlıyor, sonra `init_db()` çağrılınca gerçek pool atanıyor. Ama `from database import db_pool` dediğinde Python o anki değeri (None) alıp route dosyasının scope'una kopyalıyor. Sonradan `database.db_pool` değişse bile route dosyasındaki `db_pool` hâlâ None.
+
+**Çözüm:** Tüm 5 route dosyasında `from database import db_pool` → `import database` olarak değiştirdik.
+
+**Ders:** Python'da mutable module-level değişkenleri `from x import y` ile import etme. Modül referansını import et (`import x`) ve `x.y` ile eriş.
+
+---
+
+### Sorun 5: Accounting 422 Unprocessable Content
+
+**Belirti:** FreeRADIUS accounting paketi gönderiyordu ama FastAPI 422 döndürüyordu.
+
+**Neden:** FreeRADIUS REST modülü boş RADIUS attribute'lerini string olarak gönderiyordu:
+```json
+{"acct_session_time": "", "acct_input_octets": "", "acct_output_octets": ""}
+```
+Ama Pydantic modeli bunları `int` olarak bekliyordu. Boş string → int dönüşümü validation hatası veriyordu.
+
+**Çözüm:** `AccountingRequest` modelinde bu alanları `str` yaptık ve `@property` ile güvenli int dönüşümü eklendik:
+```python
+acct_session_time: str = "0"  # int yerine str
+
+@property
+def session_time_int(self) -> int:
+    try: return int(self.acct_session_time)
+    except: return 0
+```
+
+**Ders:** External sistemlerden gelen veriyi asla sıkı tiplemeyle beklememe. FreeRADIUS gibi eski yazılımlar boş string, null, tip uyumsuzluğu gönderebilir. Defensive programming: tip dönüşümlerini explicit yap.
+
+---
+
+## 🎤 Video İçin Anahtar Cümleler
+
+Videoda şu cümleleri kullan (kendi üslubunla):
+
+1. **Mimari açıklarken:**
+   - "FreeRADIUS C ile yazılmış 20 yıllık bir yazılım, biz onu modern bir Python API ile genişlettik"
+   - "Her servis kendi container'ında çalışıyor — birini değiştirmek diğerlerini etkilemiyor"
+
+2. **VLAN açıklarken:**
+   - "Gerçek hayatta switch bu VLAN bilgisini alıp kullanıcının portunu o VLAN'a atar"
+   - "Admin yanlış bir Wi-Fi'ye bağlansa bile RADIUS onu VLAN 10'a yönlendirir"
+
+3. **Debug anlatırken:**
+   - "İlk denemede authentication çalışmadı — FreeRADIUS debug modunda SQL sorgusunda username'in boş gittiğini gördüm"
+   - "Python import sistemiyle ilgili ince bir bug vardı — module-level değişkenler import zamanında kopyalanıyor"
+
+4. **Tasarım kararları:**
+   - "Rate-limiting'i neden Redis'te yaptık? PostgreSQL'e her auth isteğinde yazmak gereksiz I/O. Redis in-memory — mikrosaniye"
+   - "Accounting'i neden hem SQL hem Redis'e yazıyoruz? SQL kalıcı tarihçe, Redis anlık durum"
+
+---
+
+## 📊 Final Özet
+
+| Bileşen | Durum | Not |
+|---------|-------|-----|
+| Docker Compose (4 servis) | ✅ Çalışıyor | healthcheck + depends_on |
+| PostgreSQL (6 tablo + seed) | ✅ Çalışıyor | FreeRADIUS standart şema |
+| FreeRADIUS (SQL + REST) | ✅ Çalışıyor | 3 bug düzeltildi |
+| FastAPI (5 endpoint) | ✅ Çalışıyor | db_pool import bug düzeltildi |
+| Redis (rate-limit + cache) | ✅ Çalışıyor | TTL ile otomatik kilit açma |
+| PAP Authentication | ✅ Test edildi | 3 kullanıcı doğrulandı |
+| MAB Authentication | ✅ Test edildi | MAC adresi → guest VLAN |
+| VLAN Assignment | ✅ Test edildi | 10/20/30 doğru atanıyor |
+| Accounting (Start/Stop) | ✅ Test edildi | PostgreSQL + Redis kaydı |
+| Rate-Limiting | ✅ Test edildi | 5 deneme → kilit |
+
