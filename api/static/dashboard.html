@@ -282,7 +282,14 @@ Live Session Feed
 // ============================================
 
 const API_BASE = window.location.origin;
-let lastSessionCount = -1;
+
+// Cache: veri degismediyse DOM'a dokunma (flicker onleme)
+const cache = {
+    sessionsHash: '',
+    usersHash: '',
+    statsHash: '',
+    healthOk: null
+};
 
 // --- Utility Functions ---
 
@@ -310,26 +317,10 @@ function formatTime(isoString) {
     } catch { return '—'; }
 }
 
-function formatDate(isoString) {
-    try {
-        const d = new Date(isoString);
-        return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' });
-    } catch { return ''; }
-}
-
 function getInitials(username) {
     if (!username) return '??';
-    if (username.includes(':')) return 'MC'; // MAC address
+    if (username.includes(':')) return 'MC';
     return username.substring(0, 2).toUpperCase();
-}
-
-function getAvatarColor(groupname) {
-    const colors = {
-        'admin': 'bg-error/20 text-error',
-        'employee': 'bg-primary/20 text-primary',
-        'guest': 'bg-tertiary/20 text-tertiary'
-    };
-    return colors[groupname] || 'bg-outline-variant text-on-surface-variant';
 }
 
 function getBadgeStyle(groupname) {
@@ -349,8 +340,7 @@ function showUpdateFlash() {
 
 // --- Clock ---
 function updateClock() {
-    const now = new Date();
-    document.getElementById('clock').textContent = now.toLocaleTimeString('tr-TR');
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString('tr-TR');
 }
 setInterval(updateClock, 1000);
 updateClock();
@@ -361,20 +351,19 @@ async function fetchHealth() {
     try {
         const res = await fetch(API_BASE + '/health', { signal: AbortSignal.timeout(3000) });
         const data = await res.json();
+        const isOk = data.status === 'ok';
+        if (cache.healthOk === isOk) return; // degismediyse dokunma
+        cache.healthOk = isOk;
         const el = document.getElementById('system-status');
-        if (data.status === 'ok') {
-            el.innerHTML = `
-                <span class="w-2 h-2 rounded-full bg-secondary shadow-[0_0_8px_rgba(105,246,184,0.6)] animate-pulse"></span>
-                <span class="text-[10px] uppercase tracking-wider font-bold text-secondary">System Healthy</span>
-            `;
+        if (isOk) {
+            el.innerHTML = '<span class="w-2 h-2 rounded-full bg-secondary shadow-[0_0_8px_rgba(105,246,184,0.6)] animate-pulse"></span><span class="text-[10px] uppercase tracking-wider font-bold text-secondary">System Healthy</span>';
             el.className = 'flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20';
         }
     } catch {
+        if (cache.healthOk === false) return;
+        cache.healthOk = false;
         const el = document.getElementById('system-status');
-        el.innerHTML = `
-            <span class="w-2 h-2 rounded-full bg-error shadow-[0_0_8px_rgba(255,113,108,0.6)] animate-pulse"></span>
-            <span class="text-[10px] uppercase tracking-wider font-bold text-error">API Offline</span>
-        `;
+        el.innerHTML = '<span class="w-2 h-2 rounded-full bg-error shadow-[0_0_8px_rgba(255,113,108,0.6)] animate-pulse"></span><span class="text-[10px] uppercase tracking-wider font-bold text-error">API Offline</span>';
         el.className = 'flex items-center gap-2 px-3 py-1 rounded-full bg-error/10 border border-error/20';
     }
 }
@@ -383,22 +372,18 @@ async function fetchStats() {
     try {
         const res = await fetch(API_BASE + '/stats');
         const data = await res.json();
+        const hash = JSON.stringify(data);
+        if (cache.statsHash === hash) return; // degismediyse dokunma
+        cache.statsHash = hash;
+
         document.getElementById('metric-auth-rate').textContent = data.auth_success_rate + '%';
         document.getElementById('metric-blocked').textContent = data.blocked_accounts;
 
-        // Auth threshold indicator
         const thresholdEl = document.getElementById('auth-threshold');
-        if (data.auth_success_rate >= 90) {
-            thresholdEl.textContent = 'Threshold: Optimal';
-        } else if (data.auth_success_rate >= 70) {
-            thresholdEl.textContent = 'Threshold: Warning';
-        } else {
-            thresholdEl.textContent = 'Threshold: Critical';
-        }
+        thresholdEl.textContent = data.auth_success_rate >= 90 ? 'Threshold: Optimal'
+            : data.auth_success_rate >= 70 ? 'Threshold: Warning' : 'Threshold: Critical';
 
-        // Blocked status
-        const blockedEl = document.getElementById('blocked-status');
-        blockedEl.textContent = data.blocked_accounts === 0
+        document.getElementById('blocked-status').textContent = data.blocked_accounts === 0
             ? 'No active threats detected'
             : data.blocked_accounts + ' account(s) rate-limited';
     } catch { /* silent */ }
@@ -408,33 +393,34 @@ async function fetchSessions() {
     try {
         const res = await fetch(API_BASE + '/sessions/active');
         const sessions = await res.json();
+        const hash = JSON.stringify(sessions);
 
+        // Metrik karti her zaman guncelle (hafif islem)
         document.getElementById('metric-sessions').textContent = sessions.length;
 
-        const tbody = document.getElementById('sessions-tbody');
+        if (cache.sessionsHash === hash) return; // AYNI veri → DOM'a dokunma
+        const isFirstLoad = cache.sessionsHash === '';
+        cache.sessionsHash = hash;
 
+        if (!isFirstLoad) showUpdateFlash();
+
+        const tbody = document.getElementById('sessions-tbody');
         if (sessions.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-on-surface-variant">
-                <span class="material-symbols-outlined text-4xl opacity-20 block mb-2">radar</span>
-                <span class="text-sm">No active sessions</span>
-            </td></tr>`;
+            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-on-surface-variant"><span class="material-symbols-outlined text-4xl opacity-20 block mb-2">radar</span><span class="text-sm">No active sessions</span></td></tr>';
         } else {
+            const animClass = isFirstLoad ? 'slide-in' : '';
             tbody.innerHTML = sessions.map((s, i) => `
-                <tr class="hover:bg-white/5 transition-colors slide-in" style="animation-delay: ${i * 0.05}s">
+                <tr class="hover:bg-white/5 transition-colors ${animClass}" ${isFirstLoad ? 'style="animation-delay:' + (i*0.05) + 's"' : ''}>
                     <td class="px-6 py-4">
                         <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 rounded bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
-                                ${getInitials(s.username)}
-                            </div>
+                            <div class="w-8 h-8 rounded bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">${getInitials(s.username)}</div>
                             <div>
                                 <p class="text-sm font-semibold">${s.username}</p>
                                 <p class="text-[10px] text-on-surface-variant">Session: ${s.session_id}</p>
                             </div>
                         </div>
                     </td>
-                    <td class="px-6 py-4">
-                        <p class="text-[10px] text-on-surface-variant font-mono">${s.session_id}</p>
-                    </td>
+                    <td class="px-6 py-4"><p class="text-[10px] text-on-surface-variant font-mono">${s.session_id}</p></td>
                     <td class="px-6 py-4 font-mono text-xs text-on-surface-variant">${s.nas_ip}</td>
                     <td class="px-6 py-4">
                         <p class="text-xs">${formatTime(s.start_time)}</p>
@@ -452,11 +438,6 @@ async function fetchSessions() {
                 </tr>
             `).join('');
         }
-
-        if (lastSessionCount !== sessions.length && lastSessionCount !== -1) {
-            showUpdateFlash();
-        }
-        lastSessionCount = sessions.length;
     } catch { /* silent */ }
 }
 
@@ -464,13 +445,18 @@ async function fetchUsers() {
     try {
         const res = await fetch(API_BASE + '/users');
         const users = await res.json();
+        const hash = JSON.stringify(users);
 
         document.getElementById('metric-users').textContent = users.length;
+
+        if (cache.usersHash === hash) return; // AYNI veri → DOM'a dokunma
+        const isFirstLoad = cache.usersHash === '';
+        cache.usersHash = hash;
 
         // Users panel
         const panel = document.getElementById('users-panel');
         panel.innerHTML = users.map(u => `
-            <div class="flex items-center justify-between slide-in">
+            <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
                     <div class="relative">
                         <div class="w-8 h-8 rounded bg-surface-container-highest flex items-center justify-center">
@@ -489,9 +475,7 @@ async function fetchUsers() {
 
         // VLAN distribution
         const groups = { admin: 0, employee: 0, guest: 0 };
-        users.forEach(u => {
-            if (groups.hasOwnProperty(u.groupname)) groups[u.groupname]++;
-        });
+        users.forEach(u => { if (groups.hasOwnProperty(u.groupname)) groups[u.groupname]++; });
         const total = users.length || 1;
 
         document.getElementById('vlan-total').textContent = users.length;
@@ -499,18 +483,11 @@ async function fetchUsers() {
         document.getElementById('vlan-employee-pct').textContent = Math.round((groups.employee / total) * 100) + '%';
         document.getElementById('vlan-guest-pct').textContent = Math.round((groups.guest / total) * 100) + '%';
 
-        // SVG donut chart - update arcs
-        const circumference = 283;
-        const adminPct = groups.admin / total;
-        const employeePct = groups.employee / total;
-        const guestPct = groups.guest / total;
-
-        document.getElementById('vlan-arc-employee').setAttribute('stroke-dashoffset',
-            circumference - (employeePct * circumference));
-        document.getElementById('vlan-arc-guest').setAttribute('stroke-dashoffset',
-            circumference - (guestPct * circumference));
-        document.getElementById('vlan-arc-admin').setAttribute('stroke-dashoffset',
-            circumference - (adminPct * circumference));
+        // SVG donut chart
+        const C = 283;
+        document.getElementById('vlan-arc-employee').setAttribute('stroke-dashoffset', C - ((groups.employee / total) * C));
+        document.getElementById('vlan-arc-guest').setAttribute('stroke-dashoffset', C - ((groups.guest / total) * C));
+        document.getElementById('vlan-arc-admin').setAttribute('stroke-dashoffset', C - ((groups.admin / total) * C));
     } catch { /* silent */ }
 }
 
@@ -537,10 +514,7 @@ async function fetchAll() {
     await Promise.all([fetchHealth(), fetchStats(), fetchSessions(), fetchUsers()]);
 }
 
-// Initial load
 fetchAll();
-
-// Refresh every 5 seconds
 setInterval(fetchAll, 5000);
 </script>
 
