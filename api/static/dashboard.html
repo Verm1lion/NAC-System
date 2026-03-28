@@ -87,10 +87,10 @@ body { font-family: 'Inter', sans-serif; }
 <div class="flex items-center gap-8">
 <span class="text-xl font-black tracking-widest text-cyan-400 drop-shadow-[0_0_8px_rgba(83,221,252,0.4)]">S3M NAC</span>
 <nav class="hidden md:flex items-center gap-6">
-<a class="text-cyan-400 border-b-2 border-cyan-400 pb-2 transition-all font-['Inter'] tracking-tight font-medium text-sm" href="#">Dashboard</a>
-<a class="text-slate-400 hover:text-slate-200 pb-2 font-['Inter'] tracking-tight font-medium text-sm transition-all duration-200 cursor-pointer" href="#">Sessions</a>
-<a class="text-slate-400 hover:text-slate-200 pb-2 font-['Inter'] tracking-tight font-medium text-sm transition-all duration-200 cursor-pointer" href="#">Endpoints</a>
-<a class="text-slate-400 hover:text-slate-200 pb-2 font-['Inter'] tracking-tight font-medium text-sm transition-all duration-200 cursor-pointer" href="#">VLANs</a>
+<a class="text-cyan-400 border-b-2 border-cyan-400 pb-2 transition-all font-['Inter'] tracking-tight font-medium text-sm" href="#metrics">Dashboard</a>
+<a class="text-slate-400 hover:text-slate-200 pb-2 font-['Inter'] tracking-tight font-medium text-sm transition-all duration-200 cursor-pointer" href="#sessions">Sessions</a>
+<a class="text-slate-400 hover:text-slate-200 pb-2 font-['Inter'] tracking-tight font-medium text-sm transition-all duration-200 cursor-pointer" href="/docs" target="_blank">Endpoints</a>
+<a class="text-slate-400 hover:text-slate-200 pb-2 font-['Inter'] tracking-tight font-medium text-sm transition-all duration-200 cursor-pointer" href="#vlans">VLANs</a>
 </nav>
 </div>
 <div class="flex items-center gap-6">
@@ -111,7 +111,7 @@ body { font-family: 'Inter', sans-serif; }
 <main class="flex-grow pt-24 px-8 pb-12 max-w-[1920px] mx-auto w-full space-y-8">
 
 <!-- Metric Cards -->
-<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<section id="metrics" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 scroll-mt-20">
 <!-- Total Users -->
 <div class="glass-panel p-6 rounded-xl border border-white/5 flex flex-col justify-between relative overflow-hidden group fade-in">
 <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -175,7 +175,7 @@ body { font-family: 'Inter', sans-serif; }
 <!-- Active Sessions Table -->
 <div class="col-span-12 lg:col-span-9 space-y-6">
 <div class="flex items-center justify-between">
-<h3 class="text-lg font-bold tracking-tight flex items-center gap-3">
+<h3 id="sessions" class="text-lg font-bold tracking-tight flex items-center gap-3 scroll-mt-20">
 <span class="material-symbols-outlined text-primary">data_usage</span>
 Live Session Feed
 <span id="update-indicator" class="text-[10px] text-primary/50 font-normal ml-2 hidden">↻ Updated</span>
@@ -209,7 +209,7 @@ Live Session Feed
 <!-- Side Panels -->
 <div class="col-span-12 lg:col-span-3 space-y-8">
 <!-- VLAN Distribution -->
-<div class="glass-panel p-6 rounded-xl border border-white/5 space-y-6">
+<div id="vlans" class="glass-panel p-6 rounded-xl border border-white/5 space-y-6 scroll-mt-20">
 <div class="flex justify-between items-center">
 <h4 class="text-sm font-bold tracking-tight uppercase text-on-surface-variant">VLAN Distribution</h4>
 <span class="material-symbols-outlined text-primary text-lg">pie_chart</span>
