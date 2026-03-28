@@ -1,0 +1,90 @@
+# ============================================
+# FreeRADIUS Virtual Server — default
+# ============================================
+# Bu dosya, bir RADIUS istegi geldiginde
+# hangi adimlarin hangi sirada calisacagini
+# tanimlar. Bir nevi "pipeline" gibi dusun.
+#
+# Akis:
+# 1. authorize → Kullanicinin kim oldugunu bul
+# 2. authenticate → Sifresini dogrula
+# 3. post-auth → Basarili/basarisiz islemler
+# 4. accounting → Oturum verisi kaydet
+# ============================================
+
+server default {
+    listen {
+        type = auth
+        ipaddr = *
+        port = 0  # varsayilan 1812
+    }
+
+    listen {
+        type = acct
+        ipaddr = *
+        port = 0  # varsayilan 1813
+    }
+
+    # ========================================
+    # AUTHORIZE — Kullanici bilgilerini topla
+    # ========================================
+    # Bu asamada FreeRADIUS kullanicinin kim
+    # oldugunu bulmaya calisir. Henuz sifre
+    # dogrulamasi yapilmaz.
+    authorize {
+        # Standart FreeRADIUS modulleri
+        filter_username
+        preprocess
+
+        # SQL'den kullanici bilgilerini cek
+        # (radcheck, radreply, radusergroup tabloları)
+        sql
+
+        # NOT: REST modulu authorize'dan cikarildi.
+        # SQL zaten kullaniciyi buluyor ve VLAN atamasi yapiyor.
+        # REST burada Auth-Type'i override edip PAP'i bozuyordu.
+        # REST sadece accounting'de aktif (session tracking icin).
+
+        # PAP/CHAP sifre kontrolu icin hazirlik
+        # (Auth-Type ayarlar)
+        pap
+    }
+
+    # ========================================
+    # AUTHENTICATE — Sifre dogrulama
+    # ========================================
+    authenticate {
+        # PAP (Password Authentication Protocol)
+        # Kullanicinin gonderdigi sifreyi,
+        # authorize asamasinda SQL'den cekilen
+        # Cleartext-Password ile karsilastirir.
+        Auth-Type PAP {
+            pap
+        }
+    }
+
+    # ========================================
+    # POST-AUTH — Dogrulama sonrasi islemler
+    # ========================================
+    post-auth {
+        # Basarili dogrulama logunu SQL'e yaz
+        sql
+
+        # Basarisiz dogrulama durumu
+        Post-Auth-Type REJECT {
+            sql
+        }
+    }
+
+    # ========================================
+    # ACCOUNTING — Oturum kaydi
+    # ========================================
+    # Start/Interim-Update/Stop paketlerini isler
+    accounting {
+        # SQL'e accounting verisi yaz (radacct tablosu)
+        sql
+
+        # REST API'ye de bildir (Redis cache icin)
+        rest
+    }
+}

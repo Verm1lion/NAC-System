@@ -1,0 +1,73 @@
+# ============================================
+# rlm_sql — PostgreSQL Entegrasyonu
+# ============================================
+# Bu modul FreeRADIUS'un PostgreSQL veritabanindan
+# kullanici bilgilerini (radcheck), grup bilgilerini
+# (radusergroup, radgroupreply) ve accounting verilerini
+# (radacct) okuyup yazmasini saglar.
+# ============================================
+
+sql {
+    driver = "rlm_sql_postgresql"
+
+    # PostgreSQL baglanti bilgileri
+    # Docker Compose'da servis adi "postgres"
+    server = "postgres"
+    port = 5432
+    login = "radius"
+    password = "radiuspass123"
+    radius_db = "radius"
+
+    # KRITIK: Bu satir olmadan %{SQL-User-Name} bos kalir
+    # ve tum sorgular kullaniciyi bulamaz!
+    sql_user_name = "%{%{Stripped-User-Name}:-%{User-Name}}"
+
+    # FreeRADIUS SQL sorgulari
+    # Bu dosya, hangi tablodan ne cekecegini tanimlar
+    # (authorize_check_query, authorize_reply_query vs.)
+    read_clients = yes
+
+    # Baglanti havuzu ayarlari
+    pool {
+        start = 5
+        min = 4
+        max = 10
+        spare = 3
+        uses = 0
+        lifetime = 0
+        idle_timeout = 60
+    }
+
+    # Kullanici dogrulama sorgulari (radcheck tablosu)
+    authorize_check_query = "SELECT id, username, attribute, value, op FROM radcheck WHERE username = '%{SQL-User-Name}' ORDER BY id"
+
+    # Kullaniciya donulecek attribute'lar (radreply)
+    authorize_reply_query = "SELECT id, username, attribute, value, op FROM radreply WHERE username = '%{SQL-User-Name}' ORDER BY id"
+
+    # Grup bilgisi sorgulari
+    authorize_group_check_query = ""
+    authorize_group_reply_query = "SELECT id, groupname, attribute, value, op FROM radgroupreply WHERE groupname = '%{SQL-Group}' ORDER BY id"
+
+    # Kullanicinin grubunu bul
+    group_membership_query = "SELECT groupname FROM radusergroup WHERE username = '%{SQL-User-Name}' ORDER BY priority"
+
+    # Accounting sorgulari
+    accounting {
+        # Accounting-Start
+        type {
+            start {
+                query = "INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress, acctstarttime, calledstationid, callingstationid, servicetype, framedprotocol, framedipaddress) VALUES ('%{Acct-Session-Id}', '%{Acct-Unique-Session-Id}', '%{SQL-User-Name}', '%{NAS-IP-Address}', NOW(), '%{Called-Station-Id}', '%{Calling-Station-Id}', '%{Service-Type}', '%{Framed-Protocol}', '%{Framed-IP-Address}')"
+            }
+
+            # Interim-Update
+            interim-update {
+                query = "UPDATE radacct SET acctupdatetime = NOW(), acctsessiontime = '%{Acct-Session-Time}', acctinputoctets = '%{Acct-Input-Octets}', acctoutputoctets = '%{Acct-Output-Octets}', framedipaddress = '%{Framed-IP-Address}' WHERE acctsessionid = '%{Acct-Session-Id}' AND username = '%{SQL-User-Name}'"
+            }
+
+            # Accounting-Stop
+            stop {
+                query = "UPDATE radacct SET acctstoptime = NOW(), acctsessiontime = '%{Acct-Session-Time}', acctinputoctets = '%{Acct-Input-Octets}', acctoutputoctets = '%{Acct-Output-Octets}', acctterminatecause = '%{Acct-Terminate-Cause}', framedipaddress = '%{Framed-IP-Address}' WHERE acctsessionid = '%{Acct-Session-Id}' AND username = '%{SQL-User-Name}'"
+            }
+        }
+    }
+}
