@@ -2,8 +2,26 @@ from fastapi import APIRouter
 from models import AuthRequest, AuthResponse
 import database
 from config import MAX_FAILED_ATTEMPTS, LOCKOUT_SECONDS
+import hashlib
+import base64
 
 router = APIRouter()
+
+
+def verify_ssha(password: str, stored_hash: str) -> bool:
+    """
+    SSHA (Salted SHA-1) hash dogrulama.
+    stored_hash: base64( SHA1(password + salt) + salt )
+    Son 4 byte salt, ilk 20 byte SHA1 digest.
+    """
+    try:
+        decoded = base64.b64decode(stored_hash)
+        digest = decoded[:20]  # SHA1 = 20 byte
+        salt = decoded[20:]    # kalan = salt (4 byte)
+        computed = hashlib.sha1(password.encode('utf-8') + salt).digest()
+        return computed == digest
+    except Exception:
+        return False
 
 
 @router.post("/auth", response_model=AuthResponse)
@@ -15,7 +33,7 @@ def authenticate(request: AuthRequest):
     Akis:
     1. Redis'ten rate-limit kontrolu yap
     2. PostgreSQL'den kullanici bilgilerini cek
-    3. Sifre karsilastirmasi yap
+    3. SSHA hash dogrulamasi yap
     4. Basarili/basarisiz sonuca gore islem yap
     """
     redis_client = database.get_redis()
@@ -31,11 +49,12 @@ def authenticate(request: AuthRequest):
         )
 
     # Veritabanindan kullanici bilgilerini cek
+    # Once SSHA-Password, yoksa Cleartext-Password (MAB icin)
     conn = database.db_pool.getconn()
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT value FROM radcheck WHERE username = %s AND attribute = 'Cleartext-Password'",
+            "SELECT attribute, value FROM radcheck WHERE username = %s AND attribute IN ('SSHA-Password', 'Cleartext-Password')",
             (username,)
         )
         row = cur.fetchone()
@@ -44,17 +63,22 @@ def authenticate(request: AuthRequest):
         database.db_pool.putconn(conn)
 
     if not row:
-        # Kullanici bulunamadi
         _increment_fail_count(redis_client, fail_key)
         return AuthResponse(
             status="Access-Reject",
             message="Kullanici bulunamadi."
         )
 
-    stored_password = row[0]
+    attr_type, stored_value = row
 
-    if request.password != stored_password:
-        # Yanlis sifre
+    # Dogrulama: hash tipine gore karsilastir
+    if attr_type == 'SSHA-Password':
+        password_valid = verify_ssha(request.password, stored_value)
+    else:
+        # Cleartext-Password (MAB cihazlar icin)
+        password_valid = (request.password == stored_value)
+
+    if not password_valid:
         _increment_fail_count(redis_client, fail_key)
         return AuthResponse(
             status="Access-Reject",

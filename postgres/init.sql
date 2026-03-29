@@ -104,27 +104,27 @@ CREATE INDEX idx_nas_nasname ON nas(nasname);
 
 -- ============================================
 -- KULLANICI SIFRELERI
--- Cleartext-Password kullaniyoruz, FreeRADIUS
--- PAP modulu ile dogrulama yapacak.
--- Not: Production'da NT-Password veya
--- Crypt-Password kullanilir. Biz burada
--- FreeRADIUS'un kendi PAP modulunun hashing
--- yapmasini saglayacagiz.
+-- SSHA-Password (Salted SHA-1) kullaniyoruz.
+-- Format: base64( SHA1(password + salt) + salt )
+-- FreeRADIUS PAP modulu SSHA formatini native
+-- olarak destekler ve otomatik cozumler.
 -- ============================================
 
--- Admin kullanicisi
+-- Admin kullanicisi (sifre: Admin123!)
 INSERT INTO radcheck (username, attribute, op, value)
-VALUES ('testadmin', 'Cleartext-Password', ':=', 'Admin123!');
+VALUES ('testadmin', 'SSHA-Password', ':=', 'HNu0+X99zQrvDHK1ZFrWRAxTmNgNf2+g');
 
--- Employee kullanicisi
+-- Employee kullanicisi (sifre: User123!)
 INSERT INTO radcheck (username, attribute, op, value)
-VALUES ('testuser', 'Cleartext-Password', ':=', 'User123!');
+VALUES ('testuser', 'SSHA-Password', ':=', 'yYKzZwlECBwWuUH/INu4ziMd6w6SVj+d');
 
--- Guest kullanicisi
+-- Guest kullanicisi (sifre: Guest123!)
 INSERT INTO radcheck (username, attribute, op, value)
-VALUES ('testguest', 'Cleartext-Password', ':=', 'Guest123!');
+VALUES ('testguest', 'SSHA-Password', ':=', 'fir43gDYSJBLoCBLyq0+jBNCIOXIY2Q7');
 
 -- MAC adresi tabanli cihaz (MAB icin)
+-- MAB'de MAC adresi hem username hem password olarak gelir.
+-- Cleartext kalir cunku cihaz hash gondeREMEZ.
 INSERT INTO radcheck (username, attribute, op, value)
 VALUES ('AA:BB:CC:DD:EE:FF', 'Cleartext-Password', ':=', 'AA:BB:CC:DD:EE:FF');
 

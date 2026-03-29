@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from database import init_db, init_redis, close_connections
 from routes import auth, authorize, accounting, users, sessions
-from routes import stats
+from routes import stats, register
 
 
 @asynccontextmanager
@@ -43,6 +43,7 @@ app.include_router(accounting.router, tags=["Accounting"])
 app.include_router(users.router, tags=["Users"])
 app.include_router(sessions.router, tags=["Sessions"])
 app.include_router(stats.router, tags=["Stats"])
+app.include_router(register.router, tags=["Register"])
 
 
 @app.get("/health")
