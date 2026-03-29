@@ -129,12 +129,14 @@ Tarayıcıda açın: `http://<VM-IP>:8000/dashboard`
 
 ## 👥 Test Kullanıcıları
 
-| Kullanıcı | Şifre | Grup | VLAN | Açıklama |
-|-----------|-------|------|------|----------|
-| testadmin | Admin123! | admin | 10 | IT yönetici — tam erişim |
-| testuser | User123! | employee | 20 | Normal çalışan — kısıtlı erişim |
-| testguest | Guest123! | guest | 30 | Misafir — sadece internet |
-| AA:BB:CC:DD:EE:FF | AA:BB:CC:DD:EE:FF | guest (MAB) | 30 | Cihaz bazlı doğrulama |
+| Kullanıcı | Şifre | Grup | VLAN | Hash |
+|-----------|-------|------|------|------|
+| testadmin | Admin123! | admin | 10 | SSHA |
+| testuser | User123! | employee | 20 | SSHA |
+| testguest | Guest123! | guest | 30 | SSHA |
+| AA:BB:CC:DD:EE:FF | AA:BB:CC:DD:EE:FF | guest (MAB) | 30 | Cleartext |
+
+> **Not:** Şifreler SSHA (Salted SHA-1) ile hash’lenerek saklanır. MAB cihazları hash gönderemediği için MAC adresleri cleartext kalır.
 
 ## 🔌 API Reference
 
@@ -168,6 +170,15 @@ Tarayıcıda açın: `http://<VM-IP>:8000/dashboard`
 {"status": "ok", "message": "Oturum baslatildi."}
 ```
 
+### `POST /register` — Kullanıcı Kayıt
+```json
+// Request
+{"username": "yenikullanici", "password": "Sifre123!", "groupname": "employee"}
+
+// Response
+{"status": "ok", "message": "Kullanici 'yenikullanici' basariyla kaydedildi.", "username": "yenikullanici", "groupname": "employee", "vlan_id": "20"}
+```
+
 ### `GET /users` — Kullanıcı Listesi
 ### `GET /sessions/active` — Aktif Oturumlar
 ### `GET /stats` — İstatistikler (Auth Rate, Blocked Count)
@@ -195,9 +206,10 @@ nac-system/
 │   ├── static/
 │   │   └── dashboard.html        # SOC-style monitoring dashboard
 │   └── routes/
-│       ├── auth.py               # POST /auth — rate-limited authentication
+│       ├── auth.py               # POST /auth — SSHA hash doğrulama + rate-limit
 │       ├── authorize.py          # POST /authorize — grup + VLAN lookup
 │       ├── accounting.py         # POST /accounting — Start/Stop/Interim
+│       ├── register.py           # POST /register — SSHA hash ile kullanıcı kayıt
 │       ├── users.py              # GET /users — kullanıcı listesi
 │       ├── sessions.py           # GET /sessions/active — Redis'ten okuma
 │       └── stats.py              # GET /stats — auth rate, blocked count
@@ -209,9 +221,11 @@ nac-system/
 
 ## 🔒 Güvenlik Önlemleri
 
+- **Password hashing:** SSHA (Salted SHA-1) — her şifre benzersiz salt ile hash’lenir
 - **Secret yönetimi:** Tüm hassas bilgiler `.env` dosyasında, `.gitignore` ile korunuyor
 - **SQL Injection koruması:** Tüm sorgularda parameterized queries (`%s` placeholder)
 - **Rate-limiting:** Redis tabanlı — 5 başarısız giriş sonrası 300 saniye kilit
+- **Input validasyonu:** Register endpoint’inde min 6 karakter, duplicate kontrolü
 - **RADIUS shared secret:** NAS-RADIUS iletişimi `testing123` ile şifreli
 - **Ağ izolasyonu:** Docker bridge network ile servisler izole
 
